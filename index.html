@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مشاركة الموقع اللحظي</title>
+    <style>
+        /* CSS Styles for a modern look */
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            text-align: center;
+        }
+
+        #container {
+            background: #ffffff;
+            padding: 35px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 420px;
+            transition: transform 0.3s ease-in-out;
+        }
+
+        #container:hover {
+            transform: translateY(-5px);
+        }
+
+        h1 {
+            color: #1877f2;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        p {
+            font-size: 1.1em;
+            color: #606770;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        button, a > button {
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 1.1em;
+            font-family: 'Cairo', sans-serif;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+            width: 100%;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3);
+            text-decoration: none; /* For link buttons */
+        }
+        
+        a {
+            text-decoration: none;
+        }
+
+        button:hover, a > button:hover {
+            background-color: #166fe5;
+            box-shadow: 0 6px 16px rgba(24, 119, 242, 0.4);
+        }
+
+        #shareableLinkContainer {
+            margin-top: 25px;
+            display: none; /* Hidden by default */
+        }
+
+        #shareableLink {
+            width: calc(100% - 24px);
+            padding: 12px;
+            border: 1px solid #dddfe2;
+            border-radius: 8px;
+            font-size: 0.95em;
+            text-align: left;
+            direction: ltr;
+            margin-bottom: 15px;
+            background-color: #f5f6f7;
+            color: #1c1e21;
+        }
+        
+        #shareableLink:focus {
+            outline: none;
+            border-color: #1877f2;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            height: 20px;
+        }
+        
+        .loader {
+            color: #1877f2;
+        }
+
+        .success {
+            color: #28a745;
+        }
+
+        .error {
+            color: #dc3545;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <h1>📍 شارك موقعك الآن</h1>
+        <p id="infoText">اضغط على الزر أدناه لبدء مشاركة موقعك الجغرافي بشكل لحظي وآمن.</p>
+        <button id="shareLocationBtn">بدء المشاركة</button>
+        <div id="shareableLinkContainer">
+            <p style="font-size:1em; margin-bottom:10px;">أرسل هذا الرابط لمن تريد متابعة موقعك:</p>
+            <input type="text" id="shareableLink" readonly>
+            <button onclick="copyLink()">نسخ الرابط</button>
+        </div>
+        <div id="status"></div>
+    </div>
+
+    <script type="module">
+        // Import the functions you need from the SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, set, onValue, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        // Your web app's Firebase configuration (provided by you)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCpayiW7JxC5uxkOiFgWIXzWI_wNtVVHok",
+            authDomain: "locate-me-965c7.firebaseapp.com",
+            databaseURL: "https://locate-me-965c7-default-rtdb.firebaseio.com", // I've added the databaseURL for you
+            projectId: "locate-me-965c7",
+            storageBucket: "locate-me-965c7.appspot.com", // Corrected the URL
+            messagingSenderId: "396576121075",
+            appId: "1:396576121075:web:49378d2c8079a3a6bd1786"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Get HTML elements
+        const shareBtn = document.getElementById('shareLocationBtn');
+        const statusDiv = document.getElementById('status');
+        const infoText = document.getElementById('infoText');
+        const linkContainer = document.getElementById('shareableLinkContainer');
+        const linkInput = document.getElementById('shareableLink');
+        const mainContainer = document.getElementById('container');
+
+        function generateUniqueId() {
+            return Math.random().toString(36).substring(2, 10);
+        }
+
+        // --- Sharer's Logic ---
+        function startSharing() {
+            if (!navigator.geolocation) {
+                statusDiv.textContent = 'عذراً, متصفحك لا يدعم تحديد الموقع.';
+                statusDiv.className = 'error';
+                return;
+            }
+
+            const shareId = generateUniqueId();
+            const locationRef = ref(database, 'locations/' + shareId);
+
+            statusDiv.textContent = 'جاري تحديد موقعك...';
+            statusDiv.className = 'loader';
+            shareBtn.disabled = true;
+
+            const geoOptions = {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            };
+
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    
+                    set(locationRef, {
+                        lat: latitude,
+                        lng: longitude,
+                        timestamp: serverTimestamp()
+                    });
+
+                    statusDiv.textContent = '✅ تتم مشاركة موقعك الآن بنجاح.';
+                    statusDiv.className = 'success';
+                    infoText.textContent = 'لإيقاف المشاركة، قم بإغلاق هذه الصفحة.';
+                    shareBtn.style.display = 'none';
+
+                    const url = `${window.location.href.split('?')[0]}?id=${shareId}`;
+                    linkInput.value = url;
+                    linkContainer.style.display = 'block';
+                },
+                handleLocationError,
+                geoOptions
+            );
+        }
+
+        // --- Viewer's Logic ---
+        function startViewing(shareId) {
+            const locationRef = ref(database, 'locations/' + shareId);
+
+            infoText.textContent = 'عرض الموقع المباشر';
+            shareBtn.style.display = 'none';
+            statusDiv.textContent = 'جاري تحميل الموقع...';
+            statusDiv.className = 'loader';
+
+            onValue(locationRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const { lat, lng } = data;
+                    
+                    const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+                    
+                    mainContainer.innerHTML = `
+                        <h1>📍 الموقع المباشر</h1>
+                        <p>يتم تحديث الموقع تلقائياً كلما تحرك الشخص الآخر. اضغط على الزر لعرض الموقع في خرائط جوجل.</p>
+                        <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer">
+                            <button>فتح في خرائط جوجل</button>
+                        </a>
+                        <p style="margin-top: 20px; font-size: 0.9em; color: #606770;">
+                            آخر إحداثيات: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+                        </p>
+                    `;
+                } else {
+                    statusDiv.textContent = 'هذا الرابط غير صالح أو انتهت صلاحيته.';
+                    statusDiv.className = 'error';
+                }
+            }, (error) => {
+                console.error("Firebase Read Error:", error);
+                statusDiv.textContent = 'حدث خطأ أثناء الاتصال بالخادم.';
+                statusDiv.className = 'error';
+            });
+        }
+        
+        function handleLocationError(error) {
+            shareBtn.disabled = false;
+            statusDiv.className = 'error';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    statusDiv.textContent = "تم رفض إذن الوصول للموقع.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    statusDiv.textContent = "معلومات الموقع غير متاحة حالياً.";
+                    break;
+                case error.TIMEOUT:
+                    statusDiv.textContent = "انتهى وقت طلب تحديد الموقع.";
+                    break;
+                default:
+                    statusDiv.textContent = "حدث خطأ غير معروف.";
+                    break;
+            }
+        }
+
+        // Make this function globally accessible
+        window.copyLink = function() {
+            linkInput.select();
+            document.execCommand("copy");
+            alert("تم نسخ الرابط بنجاح!");
+        }
+
+        // --- Main Logic on Page Load ---
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const shareId = urlParams.get('id');
+
+            if (shareId) {
+                startViewing(shareId);
+            } else {
+                shareBtn.addEventListener('click', startSharing);
+            }
+        };
+    </script>
+</body>
+</html>
