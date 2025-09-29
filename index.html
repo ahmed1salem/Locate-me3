@@ -238,7 +238,7 @@
                 }
             }, (error) => {
                 console.error("Firebase Read Error:", error);
-                statusDiv.textContent = 'حدث خطأ أثناء الاتصال بالخادم.';
+                statusDiv.textContent = 'حدث خطأ. تأكد من صلاحية قواعد الأمان في Firebase.';
                 statusDiv.className = 'error';
             });
         }
@@ -283,3 +283,4 @@
     </script>
 </body>
 </html>
+
